@@ -1,4 +1,5 @@
 # Mobile-phone-store
+<<<<<<< HEAD
 Welcome to our simple project.
 In this project you can find system analysis for mobiles store website including the SRS
 # To install the libraries 
@@ -22,4 +23,6 @@ put you data set for the model and fit it then it suppose to give right result .
 You will find unit tests in the file tests.
 To Run the test use the command:
 python manage.py test api.tests
+=======
+>>>>>>> 6f12e29e7fb7f74bafb2bc1c232201db6b80f430
 
