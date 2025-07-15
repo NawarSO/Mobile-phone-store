@@ -1,50 +1,93 @@
-import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import LabelEncoder
-import joblib
-import os
-from django.conf import settings
+from django.db import models
+from django.contrib.auth.models import AbstractUser
 
-"""Create fake data"""
-def create_sample_data(): 
-    return pd.DataFrame({
-        'brand': ['Samsung']*5 + ['Apple']*5 + ['Xiaomi']*5,
-        'ram': ['4GB','6GB','8GB','8GB','12GB']*3,
-        'storage': ['64GB','128GB','128GB','256GB','512GB']*3,
-        'screen_size': [5.8, 6.1, 6.4, 6.7, 6.9]*3,
-        'price': [400,600,800,1000,1200,  # Samsung
-                  800,1000,1200,1400,1600, # Apple 
-                  200,300,400,500,600]     # Xiaomi
-    })
+class User(AbstractUser):
+    ROLE_CHOICES = [
+        ('ADMIN', 'Admin'),
+        ('CLIENT', 'Client'),
+    ]
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='CLIENT')
+    email = models.EmailField(unique=True)
 
-def train_model():
-    df = create_sample_data()
-    
-    # Feature engineering
-    df['ram_gb'] = df['ram'].str.extract('(\d+)').astype(int)
-    df['storage_gb'] = df['storage'].str.extract('(\d+)').astype(int)
-    
-    # Encode brands
-    le = LabelEncoder()
-    df['brand_encoded'] = le.fit_transform(df['brand'])
-    
-    # Train model
-    model = RandomForestRegressor(n_estimators=20, random_state=42)
-    model.fit(df[['brand_encoded', 'ram_gb', 'storage_gb', 'screen_size']], df['price'])
-    
-    # Save to files
-    model_dir = os.path.join(settings.BASE_DIR, 'api/ai_service')
-    os.makedirs(model_dir, exist_ok=True)
-    
-    joblib.dump(model, os.path.join(model_dir, 'phone_price_model.joblib'))
-    joblib.dump(le, os.path.join(model_dir, 'label_encoder.joblib'))
-    
-    print(" Model trained and saved!")
-    return model
+    def __str__(self):
+        return self.username
 
-def load_model():
-    """Load model or create new if missing"""
-    model_path = os.path.join(settings.BASE_DIR, 'api/ai_service/phone_price_model.joblib')
-    if not os.path.exists(model_path):
-        return train_model()
-    return joblib.load(model_path)
+class PhoneSpecs(models.Model):
+    BRAND_CHOICES = [
+        ('Samsung', 'Samsung'),
+        ('Apple', 'Apple'),
+        ('Xiaomi', 'Xiaomi'),
+        ('Huawei', 'Huawei'),
+        ('Oppo', 'Oppo'),
+        ('Vivo', 'Vivo'),
+        ('Other', 'Other'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    brand = models.CharField(max_length=50, choices=BRAND_CHOICES)
+    model = models.CharField(max_length=100)
+    ram = models.CharField(max_length=20)  
+    storage = models.CharField(max_length=20)  
+    screen_size = models.CharField(max_length=20) 
+    condition = models.CharField(max_length=20, choices=[
+        ('New', 'New'),
+        ('Used', 'Used'),
+        ('Refurbished', 'Refurbished')
+    ])
+    created_at = models.DateTimeField(auto_now_add=True)
+    estimated_price = models.FloatField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.brand} {self.model}"
+
+
+
+class Mobile(models.Model):
+    brand = models.CharField(max_length=100)
+    model = models.CharField(max_length=100)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    cpu = models.CharField(max_length=100)
+    ram = models.CharField(max_length=50)
+    storage = models.CharField(max_length=50)
+    screen_size = models.CharField(max_length=50)
+    description = models.TextField()
+    image_url = models.URLField()
+    quantity = models.IntegerField(default=0)
+
+    def __str__(self):
+        return f"{self.brand} {self.model}"
+
+class Cart(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def calculate_total(self):
+        return sum(item.subtotal() for item in self.cartitem_set.all())
+
+    def __str__(self):
+        return f"Cart #{self.id} for {self.user.username}"
+
+class CartItem(models.Model):
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE)
+    mobile = models.ForeignKey(Mobile, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1)
+
+    def subtotal(self):
+        return self.mobile.price * self.quantity
+
+    def __str__(self):
+        return f"{self.quantity}x {self.mobile.brand} {self.mobile.model}"
+
+class Order(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    cart = models.OneToOneField(Cart, on_delete=models.CASCADE)
+    order_date = models.DateTimeField(auto_now_add=True)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    is_cancelled = models.BooleanField(default=False)
+
+    def cancel_order(self):
+        self.is_cancelled = True
+        self.save()
+
+    def __str__(self):
+        return f"Order #{self.id} by {self.user.username}"
